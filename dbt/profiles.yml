@@ -1,0 +1,43 @@
+health_analytics:
+  target: "{{ env_var('ESF_ENVIRONMENT', 'dev') }}"
+  outputs:
+    dev:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      role: "{{ env_var('DBT_ROLE', 'AR_HEALTH_DEVELOPER') }}"
+      authenticator: "{{ env_var('DBT_AUTHENTICATOR', 'externalbrowser') }}"
+      database: "{{ env_var('DBT_DATABASE') }}"
+      warehouse: "{{ env_var('DBT_WAREHOUSE') }}"
+      schema: "{{ env_var('DBT_DEFAULT_SCHEMA', 'STAGING') }}"
+      threads: 4
+    ci:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      role: AR_HEALTH_CI
+      authenticator: "{{ env_var('DBT_AUTHENTICATOR', 'WORKLOAD_IDENTITY') }}"
+      database: "{{ env_var('DBT_DATABASE') }}"
+      warehouse: "{{ env_var('DBT_WAREHOUSE') }}"
+      schema: "{{ env_var('DBT_DEFAULT_SCHEMA', 'STAGING') }}"
+      threads: 4
+    uat:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      role: "{{ env_var('DBT_ROLE') }}"
+      authenticator: "{{ env_var('DBT_AUTHENTICATOR', 'WORKLOAD_IDENTITY') }}"
+      database: "{{ env_var('DBT_DATABASE') }}"
+      warehouse: "{{ env_var('DBT_WAREHOUSE') }}"
+      schema: "{{ env_var('DBT_DEFAULT_SCHEMA', 'STAGING') }}"
+      threads: 4
+    prod:
+      type: snowflake
+      account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
+      user: "{{ env_var('SNOWFLAKE_USER') }}"
+      role: "{{ env_var('DBT_ROLE') }}"
+      authenticator: "{{ env_var('DBT_AUTHENTICATOR', 'WORKLOAD_IDENTITY') }}"
+      database: "{{ env_var('DBT_DATABASE') }}"
+      warehouse: "{{ env_var('DBT_WAREHOUSE') }}"
+      schema: "{{ env_var('DBT_DEFAULT_SCHEMA', 'STAGING') }}"
+      threads: 4
