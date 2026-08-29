@@ -4,9 +4,9 @@ Reference domain project for a traditional enterprise health-data workload.
 
 ## Current status
 
-The repository is now a thin executable domain shell rather than a README-only placeholder.
+This repository is a thin domain project that consumes the shared framework through immutable revisions.
 
-Implemented in source/static CI:
+Implemented in source/static CI includes:
 
 ```text
 config/project.yml
@@ -21,15 +21,16 @@ dbt/macros/target_wrappers.sql
 .github/workflows/metadata-ci.yml
 .github/workflows/dbt-static-ci.yml
 .github/workflows/pr-workspace.yml
+.github/workflows/deploy.yml
 ```
 
-No live Snowflake dbt run or project-CI workspace execution has happened yet.
+No live Snowflake dbt deployment, project-CI workspace execution or live SCD2 test has happened yet.
 
 ## Workload intent
 
-Health demonstrates batch/micro-batch and CDC-oriented enterprise patterns: SQL Server-like operational sources, master data, confidential/regulated data classification, SCD2, late-arriving changes, reconciliation and production recovery.
+Health demonstrates batch/micro-batch and CDC-oriented enterprise patterns: SQL Server-like operational sources, confidential/regulated classification, ordered changes, SCD2, late-arriving events, delete/reinsert behavior, reconciliation and production recovery.
 
-Openflow remains deliberately deferred until the downstream RAW-contract/dbt framework is proven.
+Openflow remains deliberately deferred until the live platform/framework foundation is proven.
 
 ## Current first dataset contract
 
@@ -37,31 +38,41 @@ Openflow remains deliberately deferred until the downstream RAW-contract/dbt fra
 
 ```text
 source_system:       ehr_mssql
-load_strategy:       scd2_snapshot
+load_strategy:       scd2_merge
+implementation:      standard
 business_key:        patient_id
 watermark:           source_updated_at
+capture archetype:   full_change
+capture fidelity:    full_change
+checkpoint:          source_position
+ordering:            source_sequence
+idempotency:         patient_id + source_sequence
 change semantics:    CDC + tombstone delete
 freshness warning:   60 minutes
 freshness error:     120 minutes
+reconciliation:      row count + distinct key + timestamp min/max
 contract policy:     versioned_contract
 ```
 
-This metadata describes stable engineering behaviour only. Health-specific joins, calculations, clinical/business rules and semantic meaning remain explicit project SQL/tests.
+The RAW grain is one row per patient identifier **and source change**. This is ordered full-change CDC, not a full-table snapshot. The prior `scd2_snapshot` classification is obsolete.
+
+Metadata describes stable engineering behaviour only. Health-specific joins, calculations, clinical/business rules and semantic meaning remain explicit project SQL/tests.
 
 ## Framework consumption
 
-This repo consumes `enterprise-snowflake-data-project-framework` through immutable revisions.
+The framework owns reusable technical mechanics:
 
-The framework owns:
+- metadata schemas and semantic validation;
+- workspace naming/cleanup and query tags;
+- dbt physical target/context resolution;
+- standard load/capture/checkpoint/quality primitives;
+- SCD1/SCD2 implementations and invariants;
+- deterministic SCD2 behavior oracle;
+- reusable static CI, PR workspace and stable deployment workflows.
 
-- metadata schemas/validation;
-- workspace naming and PR cleanup;
-- query-tag construction;
-- dbt physical target resolution;
-- reusable static CI;
-- future generic load/SCD2/reconciliation/freshness mechanics.
+Health owns its RAW contract, dataset configuration, source-specific meaning and business SQL/tests.
 
-The Health repo owns its RAW contracts, dataset configuration and business SQL.
+The exact currently approved framework SHA is pinned in `dbt/packages.yml` and all workflow callers. Cross-repository release status is tracked centrally in `enterprise-snowflake-platform-infra/docs/CURRENT_CONTEXT.md` rather than duplicated here.
 
 ## dbt target model
 
@@ -72,34 +83,39 @@ The framework resolver supplies:
 ```text
 DEV personal -> DEV_HEALTH / WH_HEALTH_TRANSFORM / <DEVELOPER>_<LAYER>
 PR CI        -> CI_HEALTH  / WH_HEALTH_CI        / PR_<NUMBER>_<LAYER>
-UAT          -> UAT_HEALTH / stable layer schemas
-PROD         -> PROD_HEALTH / stable layer schemas
+DEV deploy   -> DEV_HEALTH / WH_HEALTH_TRANSFORM / stable schemas
+UAT deploy   -> UAT_HEALTH / WH_HEALTH_TRANSFORM / stable schemas
+PROD deploy  -> PROD_HEALTH / WH_HEALTH_TRANSFORM / stable schemas
 ```
 
 `dbt/macros/target_wrappers.sql` delegates root-project database/schema naming to the pinned framework dbt package.
 
-The checked-in `profiles.yml` contains no password/private key. Human DEV defaults to external-browser authentication; machine targets are designed for Snowflake workload identity with short-lived OIDC tokens.
+The checked-in `profiles.yml` contains no password/private key. Human DEV uses interactive authentication; machine CI/deployment targets use Snowflake workload identity with short-lived GitHub OIDC tokens.
 
-## CI
+## CI and delivery
 
-`Metadata CI` validates project/dataset/RAW metadata using the pinned framework composite action.
+`Metadata CI` validates project/dataset/RAW metadata with the pinned framework action.
 
-`dbt Static CI` installs the pinned dbt Core/Snowflake adapter baseline, resolves an offline CI target, installs packages and runs `dbt parse` without connecting to Snowflake.
+`dbt Static CI` installs the pinned dbt/framework toolchain and runs offline parsing/contract checks without connecting to Snowflake.
 
-`PR Workspace` is the thin caller for the framework's Snowflake workspace lifecycle. It will become live only after the DEV project-CI Snowflake service identity and GitHub Environment are applied/configured.
+`PR Workspace` is the thin caller for guarded `PR_<n>_*` workspace creation/drop through `SU_GITHUB_HEALTH_CI -> AR_HEALTH_CI`. It becomes live only after the DEV project identity and GitHub Environment `ci` are configured.
+
+`Deploy` is a thin manual caller for the framework stable deployment workflow. It accepts `dev`, `uat` or `prod` plus a full project Git SHA. The framework verifies the SHA belongs to `main` history, checks out the exact revision, verifies the dbt framework pin, enters the protected target GitHub Environment and authenticates as `SU_GITHUB_HEALTH_DEPLOY -> AR_HEALTH_DEPLOY`.
+
+Promotion uses the same reviewed project SHA across DEV -> UAT -> PROD; there are no environment branches.
 
 ## Architecture boundary
 
 ```text
 External Health source
   -> ingestion implementation
-  -> project-owned RAW contract
+  -> project-owned RAW full-change contract
   -> staging
   -> intermediate/canonical
   -> SCD2 / marts
-  -> semantic views
+  -> Semantic Views
 ```
 
 Changing ingestion technology must not force downstream redesign.
 
-For current cross-repository status, read `enterprise-snowflake-platform-infra/docs/CURRENT_CONTEXT.md` first, then `docs/PROJECT_BLUEPRINT.md` in that repository.
+For current cross-repository status and live blockers, read `enterprise-snowflake-platform-infra/docs/CURRENT_CONTEXT.md` first, then `docs/PROJECT_BLUEPRINT.md` in that repository.
