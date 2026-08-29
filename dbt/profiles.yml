@@ -16,7 +16,9 @@ health_analytics:
       account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
       user: "{{ env_var('SNOWFLAKE_USER') }}"
       role: AR_HEALTH_CI
-      authenticator: "{{ env_var('DBT_AUTHENTICATOR', 'WORKLOAD_IDENTITY') }}"
+      authenticator: "{{ env_var('DBT_AUTHENTICATOR', 'workload_identity') }}"
+      workload_identity_provider: OIDC
+      token: "{{ env_var('SNOWFLAKE_TOKEN') }}"
       database: "{{ env_var('DBT_DATABASE') }}"
       warehouse: "{{ env_var('DBT_WAREHOUSE') }}"
       schema: "{{ env_var('DBT_DEFAULT_SCHEMA', 'STAGING') }}"
@@ -26,7 +28,9 @@ health_analytics:
       account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
       user: "{{ env_var('SNOWFLAKE_USER') }}"
       role: "{{ env_var('DBT_ROLE') }}"
-      authenticator: "{{ env_var('DBT_AUTHENTICATOR', 'WORKLOAD_IDENTITY') }}"
+      authenticator: "{{ env_var('DBT_AUTHENTICATOR', 'workload_identity') }}"
+      workload_identity_provider: OIDC
+      token: "{{ env_var('SNOWFLAKE_TOKEN') }}"
       database: "{{ env_var('DBT_DATABASE') }}"
       warehouse: "{{ env_var('DBT_WAREHOUSE') }}"
       schema: "{{ env_var('DBT_DEFAULT_SCHEMA', 'STAGING') }}"
@@ -36,7 +40,9 @@ health_analytics:
       account: "{{ env_var('SNOWFLAKE_ACCOUNT') }}"
       user: "{{ env_var('SNOWFLAKE_USER') }}"
       role: "{{ env_var('DBT_ROLE') }}"
-      authenticator: "{{ env_var('DBT_AUTHENTICATOR', 'WORKLOAD_IDENTITY') }}"
+      authenticator: "{{ env_var('DBT_AUTHENTICATOR', 'workload_identity') }}"
+      workload_identity_provider: OIDC
+      token: "{{ env_var('SNOWFLAKE_TOKEN') }}"
       database: "{{ env_var('DBT_DATABASE') }}"
       warehouse: "{{ env_var('DBT_WAREHOUSE') }}"
       schema: "{{ env_var('DBT_DEFAULT_SCHEMA', 'STAGING') }}"
