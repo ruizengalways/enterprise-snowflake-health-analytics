@@ -39,6 +39,8 @@ Ordinary new physical sources do not require a new database or Terraform-created
 
 `patient` is the current Health reference dataset. Its RAW contract demonstrates a full-change/CDC-style source contract and domain-safe operational control usage. `ehr_mssql` is a reference source identity; this repository does not yet claim a live SQL Server connection.
 
+The current patient contract intentionally uses `scd1_merge`. The reference RAW contract does not yet contain real business attributes suitable for SCD2 tracking, so the project does not invent tracked columns simply to mirror another domain. Transport `vehicle_status` remains the standard SCD2 reference consumer.
+
 ## Control plane
 
 Health project runtime/deployment code uses only Health-scoped platform surfaces:
