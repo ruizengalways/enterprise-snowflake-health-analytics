@@ -2,7 +2,7 @@
 
 Concise handoff for a new conversation.
 
-## Active work
+## Active stack
 
 ```text
 PR #1  feature/domain-operational-contract
@@ -16,23 +16,17 @@ PR #2 is intentionally based on PR #1. Retarget it to `main` after PR #1 merges.
 
 ## Framework pin
 
-Current immutable framework revision:
+Verified immutable framework implementation used by this branch:
 
 ```text
 02e3fca78b453e8a39a1722ce96b15dfc98d7cf8
+Framework CI #175: SUCCESS
+Bootstrap Contract CI #7: SUCCESS
 ```
 
-That revision has green Framework CI and Bootstrap Contract CI and contains:
+It contains Medallion workspace/target naming, explicit `scd1_merge`, metadata-driven SCD2 + bootstrap contracts, deterministic dataset config snapshots, `PLATFORM_CONTROL.CONFIG` domain helpers, validated stable deployment context and post-build config registration.
 
-```text
-Medallion workspace/target naming
-explicit scd1_merge
-metadata-driven SCD2 + bootstrap contracts
-deterministic dataset config snapshots
-PLATFORM_CONTROL.CONFIG domain API helpers
-validated stable deployment context
-post-build config snapshot registration
-```
+Later framework branch commits may be documentation-only; do not repin merely because handoff prose changed.
 
 ## Domain database contract
 
@@ -49,15 +43,15 @@ post-build config snapshot registration
 
 Ordinary new sources share `BRONZE`; adding a source should not require a Terraform-created database/schema by default.
 
-## Control-plane contract
+## Control plane
 
-Runtime state is accessed through:
+Runtime state:
 
 ```text
 PLATFORM_CONTROL.OPERATIONS.HEALTH_*
 ```
 
-Deployment config audit is accessed through:
+Deployment config audit:
 
 ```text
 PLATFORM_CONTROL.CONFIG.HEALTH_DATASET_CONFIG_SNAPSHOT
@@ -66,47 +60,50 @@ PLATFORM_CONTROL.CONFIG.HEALTH_REGISTER_DATASET_CONFIG_SNAPSHOT
 
 Git is configuration truth. Snowflake CONFIG is immutable deployment audit/readback state.
 
-## Current reference dataset
+## Reference dataset
 
 `patient` is the current Health reference dataset. `ehr_mssql` is a reference source identity only; no live SQL Server source connection is claimed.
 
-The current RAW contract declares full-change CDC evidence, but it does not yet declare real business attributes that would be meaningful SCD2 tracked columns. Therefore the dataset is intentionally configured as `scd1_merge` current-state behavior. Transport `vehicle_status` remains the reference standard SCD2 consumer. Do not fabricate SCD2 tracked columns merely to make Health mirror Transport.
+The RAW contract declares full-change CDC evidence but does not yet declare real business attributes that would be meaningful SCD2 tracked columns. Therefore `patient` is intentionally configured as `scd1_merge` current-state behavior. Transport `vehicle_status` remains the standard SCD2 consumer. Do not fabricate SCD2 tracked columns merely to make Health mirror Transport.
 
 ## Deployment UX
 
-After the branch is merged to `main`:
+After PR #2 is merged to `main`:
 
 ```text
 GitHub Actions -> Deploy -> Run workflow -> choose dev/uat/prod
 ```
 
-No SHA is manually typed. The wrapper passes the selected workflow revision SHA to the reusable framework deploy workflow and the framework still enforces the immutable-main-history guard.
+No SHA is manually typed. The wrapper passes the selected workflow revision SHA to the reusable framework workflow, which still requires that SHA to be reachable from current `main` and verifies the exact framework pin.
 
-Successful deployment registers validated dataset config snapshots only after `dbt build`. See `docs/DEPLOYMENT.md`.
+After successful `dbt build`, validated dataset config snapshots are registered through Health-scoped owner-rights procedures. A failed build is not recorded as a successful deployed configuration.
 
-## Expected proof boundary
+See `docs/DEPLOYMENT.md`.
 
-Static CI should prove:
+## Static proof
+
+Latest verified source/static head before later context-only edits:
 
 ```text
-Metadata CI
-dbt Static CI
-  Health operational isolation
-  Health CONFIG isolation
-  Medallion target/profile compatibility
+1aeafef5e79a76e23153e12df102691f2d6ac724
+Metadata CI #15: SUCCESS
+dbt Static CI #24: SUCCESS
+PR Workspace #5: FAILURE before Snowflake work because ci Environment variables are missing
 ```
 
-PR Workspace still requires a real Snowflake `ci` GitHub Environment/WIF configuration and may fail for that external reason.
+The PR Workspace failure is specifically at `Load approved Snowflake environment configuration`; both `SNOWFLAKE_ACCOUNT` and `SNOWFLAKE_OIDC_AUDIENCE` are empty in the GitHub `ci` Environment.
 
-Live DEV remains required for account authentication, platform grants, cross-domain denial, real source behavior, runtime transactions/concurrency, retries/recovery and performance.
+Static CI proves Health operational isolation, Health CONFIG isolation and Medallion target/profile compatibility.
+
+Live DEV remains required for real authentication, platform grants, cross-domain denial, source behavior, transaction/concurrency semantics, retries/recovery and performance.
 
 ## Cross-repository dependencies
 
 ```text
-framework PR #4 / green SHA above
+framework PR #4 / verified implementation SHA above
 platform-infra PR #1 / domain operational/bootstrap surfaces
 platform-infra PR #2 / Medallion schemas + PLATFORM_CONTROL.CONFIG
-transport PR #3 / reference SCD2 + same one-click delivery contract
+transport PR #3 / reference SCD2 + same thin deployment contract
 ```
 
 Do not describe this repository as live-deployed until platform DEV bootstrap and WIF are complete.
