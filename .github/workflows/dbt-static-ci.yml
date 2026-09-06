@@ -30,7 +30,7 @@ jobs:
           persist-credentials: false
 
       - name: Parse with pinned framework
-        uses: ruizengalways/enterprise-snowflake-data-project-framework/.github/actions/dbt-static-check@e9608ff96bb152f61c0acf6bfaf725fbe206f267
+        uses: ruizengalways/enterprise-snowflake-data-project-framework/.github/actions/dbt-static-check@02e3fca78b453e8a39a1722ce96b15dfc98d7cf8
         with:
           project-code: HEALTH
           project-dir: dbt
@@ -62,5 +62,28 @@ jobs:
           fi
           if grep -qi "merge into PLATFORM_CONTROL.OPERATIONS.PIPELINE_RUN" "$FILE"; then
             echo "Health runtime contract must not write directly to the shared run ledger." >&2
+            exit 1
+          fi
+
+      - name: Render Health dataset config snapshot contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          dbt run-operation health_patient_config_snapshot_contract_sql \
+            --vars "$(cat "${RUNNER_TEMP}/esf-dbt-vars.json")" \
+            --project-dir dbt \
+            --profiles-dir dbt \
+            | tee "${RUNNER_TEMP}/health-config-snapshot-contract.txt"
+
+      - name: Assert Health config snapshot isolation contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="${RUNNER_TEMP}/health-config-snapshot-contract.txt"
+          grep -qi "from PLATFORM_CONTROL.CONFIG.HEALTH_DATASET_CONFIG_SNAPSHOT" "$FILE"
+          grep -qi "call PLATFORM_CONTROL.CONFIG.HEALTH_REGISTER_DATASET_CONFIG_SNAPSHOT" "$FILE"
+          grep -qi "patient" "$FILE"
+          if grep -Eqi "(insert|update|merge|delete)[[:space:]].*PLATFORM_CONTROL\.CONFIG\.DATASET_CONFIG_SNAPSHOT" "$FILE"; then
+            echo "Health config contract must not DML the shared config snapshot table directly." >&2
             exit 1
           fi
