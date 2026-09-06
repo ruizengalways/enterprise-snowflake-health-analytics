@@ -78,22 +78,24 @@ No SHA is manually typed. The wrapper passes the selected workflow revision SHA 
 
 After successful `dbt build`, validated dataset config snapshots are registered through Health-scoped owner-rights procedures. A failed build is not recorded as a successful deployed configuration.
 
+Static CI also protects this thin-wrapper contract: the Deploy UI must not expose a manual `git_sha`, must pass `github.sha`, must pin the approved framework SHA, and must not copy OIDC/token handling into the domain repo.
+
 See `docs/DEPLOYMENT.md`.
 
 ## Static proof
 
-Latest verified source/static head before later context-only edits:
+Latest verified source/static head before this context-only edit:
 
 ```text
-1aeafef5e79a76e23153e12df102691f2d6ac724
-Metadata CI #15: SUCCESS
-dbt Static CI #24: SUCCESS
-PR Workspace #5: FAILURE before Snowflake work because ci Environment variables are missing
+0c70e34930131191f53af0bbb4654a91554b2067
+Metadata CI #18: SUCCESS
+dbt Static CI #27: SUCCESS
+PR Workspace #8: FAILURE before Snowflake work because ci Environment variables are missing
 ```
 
-The PR Workspace failure is specifically at `Load approved Snowflake environment configuration`; both `SNOWFLAKE_ACCOUNT` and `SNOWFLAKE_OIDC_AUDIENCE` are empty in the GitHub `ci` Environment.
+The PR Workspace failure remains at `Load approved Snowflake environment configuration`; `SNOWFLAKE_ACCOUNT` and `SNOWFLAKE_OIDC_AUDIENCE` are not configured in the GitHub `ci` Environment.
 
-Static CI proves Health operational isolation, Health CONFIG isolation and Medallion target/profile compatibility.
+Static CI proves Health operational isolation, Health CONFIG isolation, Medallion target/profile compatibility and the one-click Deploy wrapper boundary.
 
 Live DEV remains required for real authentication, platform grants, cross-domain denial, source behavior, transaction/concurrency semantics, retries/recovery and performance.
 
