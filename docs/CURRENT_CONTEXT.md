@@ -8,12 +8,11 @@ Concise handoff for a new conversation.
 PR #1  feature/domain-operational-contract
   second-domain proof of domain-scoped operational control
 
-current stacked branch
-  feature/medallion-one-click-deploy
-  adds Medallion naming, immutable config audit and simplified stable deployment
+PR #2  feature/medallion-one-click-deploy
+  Medallion naming, immutable config audit and simplified stable deployment
 ```
 
-The current branch is intentionally based on PR #1. Retarget it to `main` after PR #1 merges.
+PR #2 is intentionally based on PR #1. Retarget it to `main` after PR #1 merges.
 
 ## Framework pin
 
@@ -71,6 +70,8 @@ Git is configuration truth. Snowflake CONFIG is immutable deployment audit/readb
 
 `patient` is the current Health reference dataset. `ehr_mssql` is a reference source identity only; no live SQL Server source connection is claimed.
 
+The current RAW contract declares full-change CDC evidence, but it does not yet declare real business attributes that would be meaningful SCD2 tracked columns. Therefore the dataset is intentionally configured as `scd1_merge` current-state behavior. Transport `vehicle_status` remains the reference standard SCD2 consumer. Do not fabricate SCD2 tracked columns merely to make Health mirror Transport.
+
 ## Deployment UX
 
 After the branch is merged to `main`:
@@ -105,6 +106,7 @@ Live DEV remains required for account authentication, platform grants, cross-dom
 framework PR #4 / green SHA above
 platform-infra PR #1 / domain operational/bootstrap surfaces
 platform-infra PR #2 / Medallion schemas + PLATFORM_CONTROL.CONFIG
+transport PR #3 / reference SCD2 + same one-click delivery contract
 ```
 
 Do not describe this repository as live-deployed until platform DEV bootstrap and WIF are complete.
