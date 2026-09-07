@@ -10,23 +10,23 @@ PR #1  feature/domain-operational-contract
 
 PR #2  feature/medallion-one-click-deploy
   Medallion naming, immutable config audit and simplified stable deployment
+
+PR #3  feature/dataset-reset-generation
+  Senior+ full reset + generation-aware recovery for patient
 ```
 
-PR #2 is intentionally based on PR #1. Retarget it to `main` after PR #1 merges.
+PR #3 is intentionally stacked on PR #2. Retarget stacked PRs after lower dependencies merge.
 
 ## Framework pin
 
-Verified immutable framework implementation used by this branch:
+Current reset-aware immutable framework pin used by this branch:
 
 ```text
-02e3fca78b453e8a39a1722ce96b15dfc98d7cf8
-Framework CI #175: SUCCESS
-Bootstrap Contract CI #7: SUCCESS
+8afe208bd911a59b9334add78a53878ffea93087
+Framework CI #181: SUCCESS
 ```
 
-It contains Medallion workspace/target naming, explicit `scd1_merge`, metadata-driven SCD2 + bootstrap contracts, deterministic dataset config snapshots, `PLATFORM_CONTROL.CONFIG` domain helpers, validated stable deployment context and post-build config registration.
-
-Later framework branch commits may be documentation-only; do not repin merely because handoff prose changed.
+It includes Medallion workspace/target naming, explicit `scd1_merge`, metadata-driven SCD2/bootstrap contracts, deterministic dataset config snapshots, stable deployment helpers and bounded full-reset execution helpers.
 
 ## Domain database contract
 
@@ -58,54 +58,105 @@ PLATFORM_CONTROL.CONFIG.HEALTH_DATASET_CONFIG_SNAPSHOT
 PLATFORM_CONTROL.CONFIG.HEALTH_REGISTER_DATASET_CONFIG_SNAPSHOT
 ```
 
-Git is configuration truth. Snowflake CONFIG is immutable deployment audit/readback state.
+Reset/generation surface:
+
+```text
+PLATFORM_CONTROL.OPERATIONS.HEALTH_DATASET_LIFECYCLE
+PLATFORM_CONTROL.OPERATIONS.HEALTH_DATASET_RESET
+PLATFORM_CONTROL.OPERATIONS.HEALTH_DATASET_RESET_START
+PLATFORM_CONTROL.OPERATIONS.HEALTH_DATASET_RESET_COMPLETE
+```
+
+Git is configuration truth. Snowflake CONFIG is immutable deployment audit/readback state; OPERATIONS contains mutable runtime/recovery state.
 
 ## Reference dataset
 
 `patient` is the current Health reference dataset. `ehr_mssql` is a reference source identity only; no live SQL Server source connection is claimed.
 
-The RAW contract declares full-change CDC evidence but does not yet declare real business attributes that would be meaningful SCD2 tracked columns. Therefore `patient` is intentionally configured as `scd1_merge` current-state behavior. Transport `vehicle_status` remains the standard SCD2 consumer. Do not fabricate SCD2 tracked columns merely to make Health mirror Transport.
+The RAW contract declares full-change CDC evidence but does not declare real business attributes that would be meaningful SCD2 tracked columns. Therefore `patient` remains intentionally configured as `scd1_merge` current-state behavior. Transport `vehicle_status` remains the standard SCD2 consumer.
+
+## Full reset
+
+Operator role:
+
+```text
+AR_HEALTH_RECOVERY
+```
+
+Intended for Senior Data Engineer+ incident recovery. No mandatory multi-person approval chain is implemented. Health Admin inherits the recovery capability.
+
+Executable operation:
+
+```text
+health_patient_full_reset
+```
+
+Current explicit reset plan:
+
+```text
+<ENV>_HEALTH.BRONZE.PATIENT
+<ENV>_HEALTH.SILVER_STAGING.PATIENT
+<ENV>_HEALTH.SILVER_INTERMEDIATE.PATIENT
+<ENV>_HEALTH.SILVER_CANONICAL.PATIENT
+<ENV>_HEALTH.GOLD_MARTS.PATIENT
+```
+
+Lifecycle:
+
+```text
+ACTIVE generation N
+  -> RESETTING
+  -> explicit cleanup
+  -> generation N+1 / READY_FOR_INITIAL_LOAD
+  -> normal patient pipeline succeeds
+  -> ACTIVE
+```
+
+Old runtime generation records remain auditable. A failed cleanup remains `RESETTING` and can retry with the same reset ID. A reset ID that already reached `READY_FOR_RELOAD` or `COMPLETED` is rejected before cleanup; a later incident must use a new reset ID.
+
+Operational instructions: `docs/RESET_RUNBOOK.md`.
 
 ## Deployment UX
 
-After PR #2 is merged to `main`:
+After the lower stack is merged to `main`:
 
 ```text
 GitHub Actions -> Deploy -> Run workflow -> choose dev/uat/prod
 ```
 
-No SHA is manually typed. The wrapper passes the selected workflow revision SHA to the reusable framework workflow, which still requires that SHA to be reachable from current `main` and verifies the exact framework pin.
+No SHA is manually typed. The wrapper passes the selected workflow revision SHA to the reusable framework workflow, which requires that SHA to be reachable from current `main` and verifies the exact framework pin.
 
 After successful `dbt build`, validated dataset config snapshots are registered through Health-scoped owner-rights procedures. A failed build is not recorded as a successful deployed configuration.
 
-Static CI also protects this thin-wrapper contract: the Deploy UI must not expose a manual `git_sha`, must pass `github.sha`, must pin the approved framework SHA, and must not copy OIDC/token handling into the domain repo.
-
-See `docs/DEPLOYMENT.md`.
-
 ## Static proof
 
-Latest verified source/static head before this context-only edit:
+Latest reset-contract source/static proof:
 
 ```text
-0c70e34930131191f53af0bbb4654a91554b2067
-Metadata CI #18: SUCCESS
-dbt Static CI #27: SUCCESS
-PR Workspace #8: FAILURE before Snowflake work because ci Environment variables are missing
+d33f92a928e3c9ca553a843c2c52c4952d86a13b
+dbt Static CI #34: SUCCESS
+PR Workspace #15: FAILURE at Load approved Snowflake environment configuration
 ```
 
-The PR Workspace failure remains at `Load approved Snowflake environment configuration`; `SNOWFLAKE_ACCOUNT` and `SNOWFLAKE_OIDC_AUDIENCE` are not configured in the GitHub `ci` Environment.
+The current branch also contains documentation-only commits after that source/static head. The Workspace failure occurs before Snowflake execution; approved `ci` Snowflake environment/WIF configuration is still unavailable.
 
-Static CI proves Health operational isolation, Health CONFIG isolation, Medallion target/profile compatibility and the one-click Deploy wrapper boundary.
+Static CI proves reset SQL rendering, explicit relation scope, Health domain/control isolation, Medallion target/profile compatibility and config snapshot boundaries.
 
-Live DEV remains required for real authentication, platform grants, cross-domain denial, source behavior, transaction/concurrency semantics, retries/recovery and performance.
+Live DEV remains required for real authentication, recovery role/table privileges, generation rollover, completed reset-ID rejection, cross-domain denial, source behavior, transaction/concurrency semantics, retries/recovery and actual reload execution.
 
 ## Cross-repository dependencies
 
 ```text
-framework PR #4 / verified implementation SHA above
-platform-infra PR #1 / domain operational/bootstrap surfaces
-platform-infra PR #2 / Medallion schemas + PLATFORM_CONTROL.CONFIG
-transport PR #3 / reference SCD2 + same thin deployment contract
+framework PR #5
+  reset-aware pin 8afe208bd911a59b9334add78a53878ffea93087
+
+platform-infra PR #3
+  generation-aware reset control
+  verified head c20c09c0c5f51dff17ebc5fb3eec75c89c5ce5a2
+  Terraform CI #167: SUCCESS
+  Platform Control SQL CI #37: SUCCESS
 ```
+
+Lower platform/framework PRs remain dependencies for runtime/bootstrap, Medallion and CONFIG control.
 
 Do not describe this repository as live-deployed until platform DEV bootstrap and WIF are complete.
