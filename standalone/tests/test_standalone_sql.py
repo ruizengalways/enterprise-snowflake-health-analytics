@@ -16,7 +16,13 @@ class StandaloneHealthSqlTests(unittest.TestCase):
     def test_has_expected_portable_scripts(self) -> None:
         self.assertEqual(
             {path.name for path in self.files},
-            {"00_setup.sql", "10_generate_patient.sql", "90_validate.sql", "99_cleanup.sql"},
+            {
+                "00_setup.sql",
+                "10_generate_patient.sql",
+                "30_incremental_patient_simulator.sql",
+                "90_validate.sql",
+                "99_cleanup.sql",
+            },
         )
 
     def test_has_no_enterprise_platform_dependency(self) -> None:
@@ -54,6 +60,20 @@ class StandaloneHealthSqlTests(unittest.TestCase):
         self.assertIn("PATIENT_DEMO_PROFILE", patient_sql)
         self.assertIn("SYNTHETIC_RISK_BAND", patient_sql)
         self.assertIn("NO ROW REPRESENTS A REAL PERSON", patient_sql)
+
+    def test_incremental_simulator_is_native_sql_and_stateful(self) -> None:
+        simulator_sql = (SQL_DIR / "30_incremental_patient_simulator.sql").read_text(encoding="utf-8").upper()
+        self.assertIn("CREATE OR REPLACE PROCEDURE DEMO_HEALTH.RESET_PATIENT_SIMULATOR()", simulator_sql)
+        self.assertIn("CREATE OR REPLACE PROCEDURE DEMO_HEALTH.ADVANCE_PATIENT_SIMULATOR()", simulator_sql)
+        self.assertIn("LANGUAGE SQL", simulator_sql)
+        self.assertNotIn("LANGUAGE PYTHON", simulator_sql)
+        self.assertIn("PATIENT_SIM_STATE", simulator_sql)
+        self.assertIn("CURRENT_BATCH", simulator_sql)
+        self.assertIn("PATIENT_SIM_CDC", simulator_sql)
+        self.assertIn("PATIENT_SIM_CURRENT", simulator_sql)
+        self.assertIn("'I'", simulator_sql)
+        self.assertIn("'U'", simulator_sql)
+        self.assertIn("'D'", simulator_sql)
 
 
 if __name__ == "__main__":
