@@ -2,33 +2,78 @@
 
 Concise handoff for a new conversation.
 
+## Architectural rule added on this branch
+
+The Health data repository now has a **framework-independent portable core**. Synthetic data generation must work on any Snowflake platform without the enterprise framework, `PLATFORM_CONTROL`, Terraform, WIF, enterprise RBAC, or enterprise database/warehouse naming.
+
+```text
+portable domain core
+  contracts/
+  config/
+  standalone/
+  domain docs
+        ↑
+optional enterprise adapter
+  dbt/
+  enterprise GitHub workflows
+        ↑
+enterprise framework/platform
+```
+
+The framework is an optional operating/deployment adapter. It must not own Health source contracts or be required to generate demo data.
+
+See `docs/PORTABILITY.md` and `standalone/README.md`.
+
 ## Active stack
 
 ```text
 PR #1  feature/domain-operational-contract
-  second-domain proof of domain-scoped operational control
-
 PR #2  feature/medallion-one-click-deploy
-  Medallion naming, immutable config audit and simplified stable deployment
-
 PR #3  feature/dataset-reset-generation
-  Senior+ full reset + generation-aware recovery for patient
+feature/standalone-synthetic-data
+  framework-free source simulation + portability contract
 ```
 
-PR #3 is intentionally stacked on PR #2. Retarget stacked PRs after lower dependencies merge.
+The standalone branch is intentionally stacked on the reset branch while the earlier stack is still open.
 
-## Framework pin
+## Framework-free demo
 
-Current reset-aware immutable framework pin used by this branch:
+Run these SQL files in any caller-selected Snowflake database:
+
+```text
+standalone/sql/00_setup.sql
+standalone/sql/10_generate_patient.sql
+standalone/sql/90_validate.sql
+```
+
+They create only:
+
+```text
+DEMO_HEALTH.PATIENT_CDC
+DEMO_HEALTH.PATIENT_DEMO_PROFILE
+DEMO_HEALTH.PATIENT_CURRENT
+```
+
+`PATIENT_CDC` aligns with this repo's RAW contract. `PATIENT_DEMO_PROFILE` is explicitly synthetic-only demo data and does not silently expand the formal source contract. No row represents a real person.
+
+The SQL does not create/switch database, warehouse or role and contains no enterprise framework or `PLATFORM_CONTROL` reference.
+
+`Standalone SQL CI` statically enforces the negative dependency boundary and expected source columns. Live Snowflake execution is still a separate proof gate.
+
+## Optional enterprise framework pin
+
+The enterprise adapter currently uses reset-aware framework SHA:
 
 ```text
 8afe208bd911a59b9334add78a53878ffea93087
 Framework CI #181: SUCCESS
 ```
 
-It includes Medallion workspace/target naming, explicit `scd1_merge`, metadata-driven SCD2/bootstrap contracts, deterministic dataset config snapshots, stable deployment helpers and bounded full-reset execution helpers.
+This pin is **not required by `standalone/`**.
 
-## Domain database contract
+## Enterprise database/control contract
+
+When used on the enterprise platform, stable databases use:
 
 ```text
 <ENV>_HEALTH
@@ -41,122 +86,53 @@ It includes Medallion workspace/target naming, explicit `scd1_merge`, metadata-d
   DQ
 ```
 
-Ordinary new sources share `BRONZE`; adding a source should not require a Terraform-created database/schema by default.
-
-## Control plane
-
-Runtime state:
-
-```text
-PLATFORM_CONTROL.OPERATIONS.HEALTH_*
-```
-
-Deployment config audit:
-
-```text
-PLATFORM_CONTROL.CONFIG.HEALTH_DATASET_CONFIG_SNAPSHOT
-PLATFORM_CONTROL.CONFIG.HEALTH_REGISTER_DATASET_CONFIG_SNAPSHOT
-```
-
-Reset/generation surface:
-
-```text
-PLATFORM_CONTROL.OPERATIONS.HEALTH_DATASET_LIFECYCLE
-PLATFORM_CONTROL.OPERATIONS.HEALTH_DATASET_RESET
-PLATFORM_CONTROL.OPERATIONS.HEALTH_DATASET_RESET_START
-PLATFORM_CONTROL.OPERATIONS.HEALTH_DATASET_RESET_COMPLETE
-```
-
-Git is configuration truth. Snowflake CONFIG is immutable deployment audit/readback state; OPERATIONS contains mutable runtime/recovery state.
+Enterprise runtime/config/reset surfaces remain under Health-scoped `PLATFORM_CONTROL` views/procedures. Those are adapter conventions, not portable-core requirements.
 
 ## Reference dataset
 
-`patient` is the current Health reference dataset. `ehr_mssql` is a reference source identity only; no live SQL Server source connection is claimed.
+`patient` remains the Health reference full-change CDC dataset and intentionally uses `scd1_merge` in the enterprise adapter because the formal RAW contract has no real business attributes suitable for SCD2 tracking.
 
-The RAW contract declares full-change CDC evidence but does not declare real business attributes that would be meaningful SCD2 tracked columns. Therefore `patient` remains intentionally configured as `scd1_merge` current-state behavior. Transport `vehicle_status` remains the standard SCD2 consumer.
+The portable demo provides source evidence plus a clearly separate synthetic profile for dashboard experimentation without claiming a live EHR source.
 
 ## Full reset
 
-Operator role:
+Enterprise incident recovery remains separate from portability:
 
 ```text
-AR_HEALTH_RECOVERY
-```
-
-Intended for Senior Data Engineer+ incident recovery. No mandatory multi-person approval chain is implemented. Health Admin inherits the recovery capability.
-
-Executable operation:
-
-```text
-health_patient_full_reset
-```
-
-Current explicit reset plan:
-
-```text
-<ENV>_HEALTH.BRONZE.PATIENT
-<ENV>_HEALTH.SILVER_STAGING.PATIENT
-<ENV>_HEALTH.SILVER_INTERMEDIATE.PATIENT
-<ENV>_HEALTH.SILVER_CANONICAL.PATIENT
-<ENV>_HEALTH.GOLD_MARTS.PATIENT
-```
-
-Lifecycle:
-
-```text
+role: AR_HEALTH_RECOVERY
+operation: health_patient_full_reset
 ACTIVE generation N
   -> RESETTING
-  -> explicit cleanup
+  -> explicit Bronze/Silver/Gold cleanup
   -> generation N+1 / READY_FOR_INITIAL_LOAD
-  -> normal patient pipeline succeeds
+  -> normal pipeline success
   -> ACTIVE
 ```
 
-Old runtime generation records remain auditable. A failed cleanup remains `RESETTING` and can retry with the same reset ID. A reset ID that already reached `READY_FOR_RELOAD` or `COMPLETED` is rejected before cleanup; a later incident must use a new reset ID.
+Old generations remain auditable. Same reset ID is retryable only while `RESETTING`; an already ready/completed ID is rejected before cleanup. See `docs/RESET_RUNBOOK.md`.
 
-Operational instructions: `docs/RESET_RUNBOOK.md`.
-
-## Deployment UX
-
-After the lower stack is merged to `main`:
+## Verified lower-stack proof
 
 ```text
-GitHub Actions -> Deploy -> Run workflow -> choose dev/uat/prod
-```
+Framework reset implementation
+8afe208bd911a59b9334add78a53878ffea93087
+Framework CI #181: SUCCESS
 
-No SHA is manually typed. The wrapper passes the selected workflow revision SHA to the reusable framework workflow, which requires that SHA to be reachable from current `main` and verifies the exact framework pin.
+Platform reset implementation
+c20c09c0c5f51dff17ebc5fb3eec75c89c5ce5a2
+Terraform CI #167: SUCCESS
+Platform Control SQL CI #37: SUCCESS
 
-After successful `dbt build`, validated dataset config snapshots are registered through Health-scoped owner-rights procedures. A failed build is not recorded as a successful deployed configuration.
-
-## Static proof
-
-Latest reset-contract source/static proof:
-
-```text
+Health reset contract
 d33f92a928e3c9ca553a843c2c52c4952d86a13b
 dbt Static CI #34: SUCCESS
-PR Workspace #15: FAILURE at Load approved Snowflake environment configuration
+PR Workspace #15: FAILURE before Snowflake execution at approved-environment configuration
 ```
 
-The current branch also contains documentation-only commits after that source/static head. The Workspace failure occurs before Snowflake execution; approved `ci` Snowflake environment/WIF configuration is still unavailable.
+The current portability branch has newer commits and must establish its own `Standalone SQL CI` proof after its PR is opened.
 
-Static CI proves reset SQL rendering, explicit relation scope, Health domain/control isolation, Medallion target/profile compatibility and config snapshot boundaries.
+## Live boundary
 
-Live DEV remains required for real authentication, recovery role/table privileges, generation rollover, completed reset-ID rejection, cross-domain denial, source behavior, transaction/concurrency semantics, retries/recovery and actual reload execution.
+Do not claim live enterprise deployment yet. Real DEV Snowflake/WIF remains required for enterprise grants, cross-domain denial, reset generation rollover and real pipelines.
 
-## Cross-repository dependencies
-
-```text
-framework PR #5
-  reset-aware pin 8afe208bd911a59b9334add78a53878ffea93087
-
-platform-infra PR #3
-  generation-aware reset control
-  verified head c20c09c0c5f51dff17ebc5fb3eec75c89c5ce5a2
-  Terraform CI #167: SUCCESS
-  Platform Control SQL CI #37: SUCCESS
-```
-
-Lower platform/framework PRs remain dependencies for runtime/bootstrap, Medallion and CONFIG control.
-
-Do not describe this repository as live-deployed until platform DEV bootstrap and WIF are complete.
+Separately, the standalone synthetic path should eventually be executed once against a plain Snowflake database with no enterprise framework objects present; that will be the live portability acceptance proof.
