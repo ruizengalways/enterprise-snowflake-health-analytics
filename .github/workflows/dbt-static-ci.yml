@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false
 
       - name: Parse with pinned framework
-        uses: ruizengalways/enterprise-snowflake-data-project-framework/.github/actions/dbt-static-check@02e3fca78b453e8a39a1722ce96b15dfc98d7cf8
+        uses: ruizengalways/enterprise-snowflake-data-project-framework/.github/actions/dbt-static-check@801d319776ad7ac24042d323db6e0c1c5f75f2b1
         with:
           project-code: HEALTH
           project-dir: dbt
@@ -44,18 +44,15 @@ jobs:
           set -euo pipefail
           FILE=".github/workflows/deploy.yml"
           INPUTS="$(sed -n '/^[[:space:]]*inputs:/,/^permissions:/p' "$FILE")"
-
           grep -Fq 'environment:' <<<"$INPUTS"
           if grep -Fq 'git_sha:' <<<"$INPUTS"; then
             echo "Health Deploy UI must not expose a manual git_sha input." >&2
             exit 1
           fi
-
-          grep -Fq 'uses: ruizengalways/enterprise-snowflake-data-project-framework/.github/workflows/project-deploy.yml@02e3fca78b453e8a39a1722ce96b15dfc98d7cf8' "$FILE"
+          grep -Fq 'uses: ruizengalways/enterprise-snowflake-data-project-framework/.github/workflows/project-deploy.yml@801d319776ad7ac24042d323db6e0c1c5f75f2b1' "$FILE"
           grep -Fq 'project_code: HEALTH' "$FILE"
           grep -Eq '^[[:space:]]+git_sha:.*github[.]sha' "$FILE"
-          grep -Fq 'framework_ref: 02e3fca78b453e8a39a1722ce96b15dfc98d7cf8' "$FILE"
-
+          grep -Fq 'framework_ref: 801d319776ad7ac24042d323db6e0c1c5f75f2b1' "$FILE"
           if grep -Eq 'ACTIONS_ID_TOKEN_REQUEST|SNOWFLAKE_TOKEN|SNOWFLAKE_OIDC_AUDIENCE' "$FILE"; then
             echo "Health wrapper must delegate WIF/token handling to the reusable framework workflow." >&2
             exit 1
@@ -67,8 +64,7 @@ jobs:
           set -euo pipefail
           dbt run-operation health_operational_contract_sql \
             --vars "$(cat "${RUNNER_TEMP}/esf-dbt-vars.json")" \
-            --project-dir dbt \
-            --profiles-dir dbt \
+            --project-dir dbt --profiles-dir dbt \
             | tee "${RUNNER_TEMP}/health-operational-contract.txt"
 
       - name: Assert Health domain isolation contract
@@ -81,14 +77,8 @@ jobs:
           grep -qi "call PLATFORM_CONTROL.OPERATIONS.HEALTH_PIPELINE_RUN_START" "$FILE"
           grep -qi "call PLATFORM_CONTROL.OPERATIONS.HEALTH_PIPELINE_RUN_FINISH" "$FILE"
           grep -qi "call PLATFORM_CONTROL.OPERATIONS.HEALTH_RECORD_PIPELINE_CHECK_RESULT" "$FILE"
-          if grep -qi "call PLATFORM_CONTROL.OPERATIONS.ADVANCE_PIPELINE_CHECKPOINT" "$FILE"; then
-            echo "Health runtime contract must not call the generic checkpoint procedure." >&2
-            exit 1
-          fi
-          if grep -qi "merge into PLATFORM_CONTROL.OPERATIONS.PIPELINE_RUN" "$FILE"; then
-            echo "Health runtime contract must not write directly to the shared run ledger." >&2
-            exit 1
-          fi
+          if grep -qi "call PLATFORM_CONTROL.OPERATIONS.ADVANCE_PIPELINE_CHECKPOINT" "$FILE"; then exit 1; fi
+          if grep -qi "merge into PLATFORM_CONTROL.OPERATIONS.PIPELINE_RUN" "$FILE"; then exit 1; fi
 
       - name: Render Health dataset config snapshot contract
         shell: bash
@@ -96,8 +86,7 @@ jobs:
           set -euo pipefail
           dbt run-operation health_patient_config_snapshot_contract_sql \
             --vars "$(cat "${RUNNER_TEMP}/esf-dbt-vars.json")" \
-            --project-dir dbt \
-            --profiles-dir dbt \
+            --project-dir dbt --profiles-dir dbt \
             | tee "${RUNNER_TEMP}/health-config-snapshot-contract.txt"
 
       - name: Assert Health config snapshot isolation contract
@@ -108,7 +97,31 @@ jobs:
           grep -qi "from PLATFORM_CONTROL.CONFIG.HEALTH_DATASET_CONFIG_SNAPSHOT" "$FILE"
           grep -qi "call PLATFORM_CONTROL.CONFIG.HEALTH_REGISTER_DATASET_CONFIG_SNAPSHOT" "$FILE"
           grep -qi "patient" "$FILE"
-          if grep -Eqi "(insert|update|merge|delete)[[:space:]].*PLATFORM_CONTROL\.CONFIG\.DATASET_CONFIG_SNAPSHOT" "$FILE"; then
-            echo "Health config contract must not DML the shared config snapshot table directly." >&2
+          if grep -Eqi "(insert|update|merge|delete)[[:space:]].*PLATFORM_CONTROL\.CONFIG\.DATASET_CONFIG_SNAPSHOT" "$FILE"; then exit 1; fi
+
+      - name: Render Health full reset contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          dbt run-operation health_patient_full_reset_contract_sql \
+            --args '{"reset_id":"static-reset","reason":"static reset proof","git_sha":"0000000000000000000000000000000000000000"}' \
+            --vars "$(cat "${RUNNER_TEMP}/esf-dbt-vars.json")" \
+            --project-dir dbt --profiles-dir dbt \
+            | tee "${RUNNER_TEMP}/health-reset-contract.txt"
+
+      - name: Assert Health full reset boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE="${RUNNER_TEMP}/health-reset-contract.txt"
+          grep -qi "call PLATFORM_CONTROL.OPERATIONS.HEALTH_DATASET_RESET_START" "$FILE"
+          grep -qi "truncate table if exists CI_HEALTH.BRONZE.PATIENT" "$FILE"
+          grep -qi "truncate table if exists CI_HEALTH.SILVER_STAGING.PATIENT" "$FILE"
+          grep -qi "truncate table if exists CI_HEALTH.SILVER_INTERMEDIATE.PATIENT" "$FILE"
+          grep -qi "truncate table if exists CI_HEALTH.SILVER_CANONICAL.PATIENT" "$FILE"
+          grep -qi "truncate table if exists CI_HEALTH.GOLD_MARTS.PATIENT" "$FILE"
+          grep -qi "call PLATFORM_CONTROL.OPERATIONS.HEALTH_DATASET_RESET_COMPLETE" "$FILE"
+          if grep -Eqi "(delete|update|merge)[[:space:]].*PLATFORM_CONTROL\.OPERATIONS\.(PIPELINE_|DATASET_)" "$FILE"; then
+            echo "Health reset contract must not directly mutate shared control tables." >&2
             exit 1
           fi
