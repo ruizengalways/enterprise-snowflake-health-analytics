@@ -74,7 +74,7 @@ BEGIN
       FROM DEMO_HEALTH.PATIENT_SIM_STATE
      WHERE simulator_name = 'patient';
 
-    v_event_time := DATEADD('minute', :v_batch * 30, '2026-01-01 00:00:00'::TIMESTAMP_NTZ);
+    v_event_time := DATEADD('minute', v_batch * 30, '2026-01-01 00:00:00'::TIMESTAMP_NTZ);
 
     IF (v_batch = 0) THEN
         INSERT INTO DEMO_HEALTH.PATIENT_SIM_CDC (
