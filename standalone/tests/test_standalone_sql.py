@@ -74,6 +74,8 @@ class StandaloneHealthSqlTests(unittest.TestCase):
         self.assertIn("'I'", simulator_sql)
         self.assertIn("'U'", simulator_sql)
         self.assertIn("'D'", simulator_sql)
+        self.assertIn(":V_BATCH >= 5", simulator_sql)
+        self.assertIn("MOD(PATIENT_N, 100)", simulator_sql)
 
 
 if __name__ == "__main__":
