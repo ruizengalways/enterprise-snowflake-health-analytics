@@ -4,7 +4,7 @@ Concise handoff for a new conversation.
 
 ## Architectural rule
 
-Health now has a **framework-independent portable core**. Source contracts and synthetic data generation must work on any Snowflake platform without the enterprise framework, `PLATFORM_CONTROL`, Terraform, WIF, enterprise RBAC, or enterprise database/warehouse naming.
+Health has a **framework-independent portable core**. Source contracts and synthetic data generation must work on any Snowflake platform without the enterprise framework, `PLATFORM_CONTROL`, Terraform, WIF, enterprise RBAC, or enterprise database/warehouse naming.
 
 ```text
 portable Health core
@@ -28,14 +28,14 @@ See `docs/PORTABILITY.md` and `standalone/README.md`.
 PR #1 domain operational proof
 PR #2 Medallion/config/one-click enterprise deploy
 PR #3 generation-aware full reset
-PR #4 framework-free portable synthetic data
+PR #4 framework-free portable synthetic data + stateful source simulator
 ```
 
 PR #4 is stacked on PR #3 while the lower stack remains open.
 
 ## Portable demo — PR #4
 
-Run on any caller-selected Snowflake database/warehouse:
+Bulk deterministic source data:
 
 ```text
 standalone/sql/00_setup.sql
@@ -43,7 +43,7 @@ standalone/sql/10_generate_patient.sql
 standalone/sql/90_validate.sql
 ```
 
-Creates only:
+Bulk objects:
 
 ```text
 DEMO_HEALTH.PATIENT_CDC
@@ -53,17 +53,33 @@ DEMO_HEALTH.PATIENT_CURRENT
 
 `PATIENT_CDC` matches the formal RAW contract. `PATIENT_DEMO_PROFILE` is explicitly synthetic-only demo data and does not silently expand the production contract. No row represents a real person.
 
-The SQL creates no database/warehouse/role and contains no framework or `PLATFORM_CONTROL` reference.
-
-Verified portability source/static head:
+Stateful incremental source simulator:
 
 ```text
-d6374e9c694073456ca51e5c2a454fee052e26c7
-Standalone SQL CI #1: SUCCESS
-PR Workspace #18: enterprise adapter workflow; live environment configuration remains external
+standalone/sql/30_incremental_patient_simulator.sql
+
+DEMO_HEALTH.PATIENT_SIM_CDC
+DEMO_HEALTH.PATIENT_SIM_CURRENT
+DEMO_HEALTH.PATIENT_SIM_STATE
+DEMO_HEALTH.RESET_PATIENT_SIMULATOR()
+DEMO_HEALTH.ADVANCE_PATIENT_SIMULATOR()
 ```
 
-Later branch commits are documentation-only. The standalone CI proof is independent of the enterprise workspace workflow.
+The simulator uses native Snowflake Scripting (`LANGUAGE SQL`), not Python. `RESET` returns `current_batch` to `-1`. The first `ADVANCE` emits deterministic insert records for 1000 synthetic patient IDs. Later calls emit deterministic update records for a bounded subset; later batches also emit a small number of delete tombstones. Event timestamps and source sequences are deterministic so reset-and-replay is reproducible.
+
+The simulator models **source CDC only**. Target history behavior remains the responsibility of the consuming pipeline. The current enterprise adapter still intentionally uses `scd1_merge` for `patient`; another platform can consume the same simulator with SCD2 or another strategy if its domain model requires it.
+
+The standalone SQL creates no database/warehouse/role and contains no enterprise framework or control-plane dependency. Bulk and incremental simulator objects are separate and can coexist.
+
+Verified simulator source/static head:
+
+```text
+244399005b72df51a71f8465e0094927a220a489
+Standalone SQL CI #7: SUCCESS
+PR Workspace #24: FAILURE at Load approved Snowflake environment configuration
+```
+
+This `CURRENT_CONTEXT.md` update is documentation-only after that verified source head. The PR Workspace failure belongs to the optional enterprise adapter and occurs before checkout/Snowflake execution.
 
 ## Optional enterprise adapter
 
@@ -80,7 +96,7 @@ Enterprise stable databases use `<ENV>_HEALTH` plus Medallion schemas. Those nam
 
 `patient` remains a full-change CDC reference dataset and intentionally uses `scd1_merge` in the enterprise adapter because the formal RAW contract currently lacks real business attributes suitable for SCD2 tracking.
 
-The portable demo provides CDC evidence plus a separately labeled synthetic profile for dashboard experiments without claiming a live EHR source.
+The portable bulk generator and stateful simulator provide CDC evidence plus a separately labeled synthetic profile for dashboard experiments without claiming a live EHR source.
 
 ## Full reset enterprise adapter
 
@@ -123,8 +139,15 @@ plain Snowflake database
 no framework package
 no PLATFORM_CONTROL
 no enterprise roles/naming
- -> execute standalone SQL
- -> verify row counts, keys and CDC operations
+ -> execute standalone setup + simulator SQL
+ -> RESET simulator
+ -> ADVANCE initial batch
+ -> inspect CDC/current state
+ -> ADVANCE multiple change batches
+ -> verify deterministic I/U/D evolution
+ -> optionally run any consuming pipeline between ADVANCE calls
 ```
+
+Current Snowflake Scripting variable-binding and `SQLROWCOUNT` placement have been checked against Snowflake documentation, but static CI is not a live Snowflake compiler/runtime proof.
 
 Enterprise live acceptance separately requires real DEV Snowflake/WIF for grants, control plane, reset generation rollover and pipelines.
