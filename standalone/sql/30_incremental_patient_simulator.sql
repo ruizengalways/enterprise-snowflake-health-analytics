@@ -97,7 +97,12 @@ BEGIN
         SELECT
             'PT-' || LPAD(TO_VARCHAR(patient_n + 1), 7, '0'),
             :v_event_time,
-            IFF(:v_batch >= 5 AND MOD(patient_n + :v_batch, 211) = 0, 'D', 'U'),
+            IFF(
+                :v_batch >= 5
+                AND MOD(patient_n, 100) = MOD(10 - MOD(:v_batch, 10), 10),
+                'D',
+                'U'
+            ),
             patient_n * 1000 + :v_batch + 1,
             DATEADD('second', 5, :v_event_time)
         FROM (
