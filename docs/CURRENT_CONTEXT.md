@@ -65,7 +65,7 @@ DEMO_HEALTH.RESET_PATIENT_SIMULATOR()
 DEMO_HEALTH.ADVANCE_PATIENT_SIMULATOR()
 ```
 
-The simulator uses native Snowflake Scripting (`LANGUAGE SQL`), not Python. `RESET` returns `current_batch` to `-1`. The first `ADVANCE` emits deterministic insert records for 1000 synthetic patient IDs. Later calls emit deterministic update records for a bounded subset; later batches also emit a small number of delete tombstones. Event timestamps and source sequences are deterministic so reset-and-replay is reproducible.
+The simulator uses native Snowflake Scripting (`LANGUAGE SQL`), not Python. `RESET` returns `current_batch` to `-1`. The first `ADVANCE` emits deterministic insert records for 1000 synthetic patient IDs. Later calls emit deterministic changes for 100 patients per batch. Starting at batch 5, 10 of those changes are deterministic delete tombstones and the remaining 90 are updates. Event timestamps and source sequences are deterministic so reset-and-replay is reproducible.
 
 The simulator models **source CDC only**. Target history behavior remains the responsibility of the consuming pipeline. The current enterprise adapter still intentionally uses `scd1_merge` for `patient`; another platform can consume the same simulator with SCD2 or another strategy if its domain model requires it.
 
@@ -74,9 +74,9 @@ The standalone SQL creates no database/warehouse/role and contains no enterprise
 Verified simulator source/static head:
 
 ```text
-244399005b72df51a71f8465e0094927a220a489
-Standalone SQL CI #7: SUCCESS
-PR Workspace #24: FAILURE at Load approved Snowflake environment configuration
+d650e7ae092286245d104ea4a4cf4854ba48827d
+Standalone SQL CI #10: SUCCESS
+PR Workspace #27: FAILURE at Load approved Snowflake environment configuration
 ```
 
 This `CURRENT_CONTEXT.md` update is documentation-only after that verified source head. The PR Workspace failure belongs to the optional enterprise adapter and occurs before checkout/Snowflake execution.
