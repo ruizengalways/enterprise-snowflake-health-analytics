@@ -1,71 +1,69 @@
 # Enterprise Snowflake Health Analytics
 
-Domain repository for Health-owned Snowflake analytics.
+Health data-product repository. The **portable core is framework-independent**: the repository can generate and expose synthetic Health source data on any Snowflake platform without the enterprise data framework, `PLATFORM_CONTROL`, Terraform, or enterprise-specific RBAC/database naming.
 
 ## Start here
 
-For a new conversation/session, read:
+1. `standalone/README.md` — run synthetic Health data on any Snowflake account.
+2. `docs/PORTABILITY.md` — portable-core versus optional enterprise-integration boundary.
+3. `docs/CURRENT_CONTEXT.md` — current PR stack, CI status and live blockers.
+4. `docs/DEPLOYMENT.md` — optional enterprise-platform deployment path.
 
-1. `docs/CURRENT_CONTEXT.md` — current PR/branch, framework pin, CI status, blockers and next gate.
-2. `docs/DEPLOYMENT.md` — one-click stable deployment path and environment prerequisites.
+## Portable core
 
-Human-readable architecture and operating guidance belong under `docs/`. Machine configuration belongs under `config/` and `contracts/`. Reusable technical behavior belongs in `enterprise-snowflake-data-project-framework` rather than being copied here.
-
-## Domain database shape
-
-Stable Health databases are environment × data product:
+The portable core is owned by this repository and must not depend on a shared implementation framework:
 
 ```text
-DEV_HEALTH
-UAT_HEALTH
-PROD_HEALTH
+contracts/
+config/                 domain metadata
+standalone/             pure Snowflake SQL synthetic sources
+docs/                   domain knowledge and operating guidance
 ```
 
-They use the shared Medallion schema vocabulary:
+To generate demo data, select any Snowflake database/warehouse and run:
 
 ```text
-BRONZE
-SILVER_STAGING
-SILVER_INTERMEDIATE
-SILVER_CANONICAL
-GOLD_MARTS
-GOLD_SEMANTIC
-DQ
+standalone/sql/00_setup.sql
+standalone/sql/10_generate_patient.sql
+standalone/sql/90_validate.sql
 ```
 
-Ordinary new physical sources do not require a new database or Terraform-created source schema. Source identity stays in Git metadata and Bronze object naming unless governance requires an explicit isolation exception.
-
-## Current reference dataset
-
-`patient` is the current Health reference dataset. Its RAW contract demonstrates a full-change/CDC-style source contract and domain-safe operational control usage. `ehr_mssql` is a reference source identity; this repository does not yet claim a live SQL Server connection.
-
-The current patient contract intentionally uses `scd1_merge`. The reference RAW contract does not yet contain real business attributes suitable for SCD2 tracking, so the project does not invent tracked columns simply to mirror another domain. Transport `vehicle_status` remains the standard SCD2 reference consumer.
-
-## Control plane
-
-Health project runtime/deployment code uses only Health-scoped platform surfaces:
+This creates:
 
 ```text
-PLATFORM_CONTROL.OPERATIONS.HEALTH_*
-PLATFORM_CONTROL.CONFIG.HEALTH_*
+DEMO_HEALTH.PATIENT_CDC
+DEMO_HEALTH.PATIENT_DEMO_PROFILE
+DEMO_HEALTH.PATIENT_CURRENT
 ```
 
-Project roles must not directly DML shared PLATFORM_CONTROL base tables.
+`PATIENT_CDC` matches the current RAW contract. `PATIENT_DEMO_PROFILE` is explicitly synthetic-only descriptive data for demos and dashboard experiments; it does not silently expand the production RAW contract. No row represents a real person.
 
-Git remains the dataset configuration source of truth. A successful stable deployment records the validated immutable config snapshot through the Health-scoped CONFIG procedure.
+No enterprise framework installation is needed. `Standalone SQL CI` enforces that these scripts contain no `PLATFORM_CONTROL`, enterprise role/warehouse/database names, or framework references.
 
-## Delivery
+## Domain contract
 
-PR CI uses framework-generated `PR_<number>_<MEDALLION_LAYER>` workspaces.
+`patient` is the current Health reference dataset. Its RAW contract is a full-change CDC-style source contract and currently uses `scd1_merge` in the enterprise integration because the formal RAW contract does not yet declare real business attributes appropriate for SCD2 tracking.
 
-Stable DEV/UAT/PROD deployment is exposed through `.github/workflows/deploy.yml`. After a change is on `main`, use GitHub Actions -> Deploy -> Run workflow and choose only the target environment. The selected workflow revision SHA is passed to the pinned reusable framework deployment workflow, which independently proves that the revision is reachable from `main`.
+The standalone source shape remains usable by another Snowflake platform regardless of how that platform performs ingestion or transformation.
 
-The reusable workflow validates Git metadata, derives dbt context, authenticates through protected-environment WIF, runs `dbt build`, and registers config snapshots only after a successful build.
+## Optional enterprise integration
 
-See `docs/DEPLOYMENT.md` for the operator path and prerequisites.
+The existing `dbt/` project and GitHub deployment workflows integrate this portable domain repo with the `enterprise-snowflake` platform. That path may use the enterprise framework for control-plane, deployment, reset, bootstrap and WIF conveniences.
+
+It is an **adapter**, not a prerequisite for using the repository or generating demo data. A consumer on another Snowflake platform may ignore the enterprise integration and use the portable contracts/SQL directly.
+
+Enterprise stable databases currently use:
+
+```text
+DEV_HEALTH / UAT_HEALTH / PROD_HEALTH
+BRONZE / SILVER_STAGING / SILVER_INTERMEDIATE / SILVER_CANONICAL
+GOLD_MARTS / GOLD_SEMANTIC / DQ
+```
+
+Those names are enterprise-platform conventions, not requirements of the portable core.
 
 ## Proof boundary
 
-Static CI proves metadata validation, dbt offline rendering, Health-scoped operational/config API usage and framework-pin consistency.
+Standalone CI proves the synthetic SQL has no enterprise-framework/platform dependency and that expected contract columns are present. Enterprise static CI separately proves the optional platform adapter.
 
-Live Snowflake WIF, platform grants, cross-domain denial, real source behavior, retries/recovery and performance remain explicit DEV integration gates.
+Neither static suite is a live Snowflake execution proof. Real Snowflake WIF, grants, cross-domain denial, reset runtime behavior and source CDC semantics remain live integration gates.
