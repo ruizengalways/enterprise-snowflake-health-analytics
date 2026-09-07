@@ -21,7 +21,7 @@
     reason='static reset contract',
     git_sha=none
 ) -%}
-    {{ enterprise_snowflake_framework.esf_dataset_full_reset_sql(
+    {%- set sql = enterprise_snowflake_framework.esf_dataset_full_reset_sql(
         'HEALTH',
         reset_id,
         'patient',
@@ -29,7 +29,9 @@
         health_patient_reset_relations(),
         git_sha,
         "OBJECT_CONSTRUCT('reset_type', 'FULL_RESET', 'dataset', 'patient')"
-    ) }}
+    ) -%}
+    {%- do log(sql, info=true) -%}
+    {{ return(sql) }}
 {%- endmacro %}
 
 {% macro health_patient_full_reset(reset_id, reason, git_sha=none) -%}
