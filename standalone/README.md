@@ -6,11 +6,11 @@ It uses **Snowflake SQL only**. It does not require dbt, the enterprise data fra
 
 ## Prerequisites
 
-Connect to any Snowflake account, select any database and warehouse, and use a role that can create a schema plus tables/views in that database.
+Connect to any Snowflake account, select any database and warehouse, and use a role that can create a schema plus tables/views/procedures in that database.
 
 The scripts never create or switch databases, roles, or warehouses.
 
-## Run order
+## Bulk demo data
 
 Execute these files in order using Snowsight, SnowSQL, Snowflake CLI, JDBC/ODBC, or any SQL client:
 
@@ -20,15 +20,7 @@ Execute these files in order using Snowsight, SnowSQL, Snowflake CLI, JDBC/ODBC,
 90_validate.sql
 ```
 
-The scripts create only:
-
-```text
-DEMO_HEALTH
-```
-
-Re-running the generation script deterministically replaces the demo tables/views.
-
-## Generated objects
+This deterministic path creates:
 
 ```text
 DEMO_HEALTH.PATIENT_CDC
@@ -38,9 +30,59 @@ DEMO_HEALTH.PATIENT_CURRENT
 
 `PATIENT_CDC` matches the current repository RAW contract for `patient` and contains insert/update/tombstone-delete source evidence. `PATIENT_DEMO_PROFILE` is additional synthetic-only descriptive data for demos and dashboard experiments; it is deliberately not presented as part of the current RAW contract.
 
-No row represents a real person or external source record.
+## Stateful incremental simulator
 
-## Cleanup
+Run once to install the simulator:
+
+```text
+30_incremental_patient_simulator.sql
+```
+
+It creates independent simulator objects:
+
+```text
+DEMO_HEALTH.PATIENT_SIM_CDC
+DEMO_HEALTH.PATIENT_SIM_CURRENT
+DEMO_HEALTH.PATIENT_SIM_STATE
+DEMO_HEALTH.RESET_PATIENT_SIMULATOR()
+DEMO_HEALTH.ADVANCE_PATIENT_SIMULATOR()
+```
+
+The procedures use Snowflake SQL Scripting (`LANGUAGE SQL`), not Python.
+
+Typical incremental test cycle:
+
+```sql
+CALL DEMO_HEALTH.RESET_PATIENT_SIMULATOR();
+
+CALL DEMO_HEALTH.ADVANCE_PATIENT_SIMULATOR();
+-- initial I records: run your pipeline
+
+CALL DEMO_HEALTH.ADVANCE_PATIENT_SIMULATOR();
+-- deterministic U records: run your pipeline again
+
+CALL DEMO_HEALTH.ADVANCE_PATIENT_SIMULATOR();
+-- more changes
+
+CALL DEMO_HEALTH.ADVANCE_PATIENT_SIMULATOR();
+CALL DEMO_HEALTH.ADVANCE_PATIENT_SIMULATOR();
+CALL DEMO_HEALTH.ADVANCE_PATIENT_SIMULATOR();
+-- later batches also contain a small number of D tombstones
+```
+
+Each call advances `current_batch`. Event timestamps and source sequences are deterministic, so the same reset-and-advance sequence is reproducible. The simulator emits source CDC; target history behavior remains the responsibility of the consuming pipeline.
+
+The bulk and incremental paths use different tables, so they can coexist.
+
+## Schema and cleanup
+
+All standalone objects live only in:
+
+```text
+DEMO_HEALTH
+```
+
+No row represents a real person or external source record.
 
 Run:
 
