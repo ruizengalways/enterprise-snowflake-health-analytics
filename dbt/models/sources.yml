@@ -1,0 +1,8 @@
+version: 2
+
+sources:
+  - name: bronze_health
+    database: "{{ target.database }}"
+    schema: BRONZE
+    tables:
+      - name: patient

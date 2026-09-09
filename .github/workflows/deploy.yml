@@ -8,10 +8,7 @@ on:
         description: "Target Snowflake environment. Run this workflow from main."
         required: true
         type: choice
-        options:
-          - dev
-          - uat
-          - prod
+        options: [dev, uat, prod]
 
 permissions:
   contents: read
@@ -23,10 +20,10 @@ concurrency:
 
 jobs:
   deploy:
-    uses: ruizengalways/enterprise-snowflake-data-project-framework/.github/workflows/project-deploy.yml@8afe208bd911a59b9334add78a53878ffea93087
+    uses: ruizengalways/enterprise-snowflake-data-project-framework/.github/workflows/project-deploy.yml@0e9dedd2761d93cac74835ec6e6ab07b56da2eaa
     with:
       project_code: HEALTH
       environment: ${{ inputs.environment }}
       git_sha: ${{ github.sha }}
-      framework_ref: 8afe208bd911a59b9334add78a53878ffea93087
+      framework_ref: 0e9dedd2761d93cac74835ec6e6ab07b56da2eaa
       project_dir: dbt
