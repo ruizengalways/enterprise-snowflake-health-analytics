@@ -75,21 +75,21 @@ DEMO_HEALTH.ADVANCE_PATIENT_SIMULATOR()
 
 `PATIENT_CDC` follows the formal raw/source contract. `PATIENT_DEMO_PROFILE` is explicitly synthetic-only demo data and does not expand the production contract. The simulator models source CDC only; target state/history behavior belongs to the consuming pipeline.
 
-## Full reset enterprise adapter
+## Processing reset enterprise adapter
 
-Generation-aware reset remains available through the domain recovery boundary:
+Generation-aware processing reset is exposed through `dbt/macros/reset_contract.sql` and the domain recovery boundary. It preserves ingestion-owned Bronze evidence and clears only persisted SCD1 processing state:
 
 ```text
 AR_HEALTH_RECOVERY
 ACTIVE generation N
  -> RESETTING
- -> explicit reconstructable Bronze/Silver/Gold cleanup
+ -> truncate SILVER_CANONICAL.PATIENT
  -> generation N+1 / READY_FOR_INITIAL_LOAD
- -> normal pipeline reload
+ -> rebuild from retained Bronze evidence
  -> ACTIVE
 ```
 
-Repair/replay remains separate from reset. See `docs/RESET_RUNBOOK.md`.
+The staging view is not truncated. The reset macro rejects prefixed PR/personal workspaces and mismatched environment databases. Repair/replay remains separate from reset. See `docs/RESET_RUNBOOK.md`.
 
 ## Verified static state
 
@@ -122,7 +122,7 @@ configure DEV Snowflake + GitHub Environment WIF
 -> prove PR workspace lifecycle
 -> deploy platform/control-plane prerequisites
 -> run live patient SCD1 update/tombstone/replay cases
--> prove reset/generation rollover and recovery-role isolation
+-> prove processing reset/generation rollover and recovery-role isolation
 -> run stable deployment
 ```
 
