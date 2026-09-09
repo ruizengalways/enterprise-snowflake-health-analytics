@@ -55,3 +55,17 @@ jobs:
           grep -Fq 'schema_version: 2' contracts/raw/patient.yml
           grep -Fq 'delete_values:' contracts/raw/patient.yml
           if grep -R -n -E 'load_strategy|scd1_merge|scd2_merge|scd2_snapshot|scd2_stream_task|checkpoint_kind' config contracts dbt/models; then exit 1; fi
+      - name: Assert v2 processing reset contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE=dbt/macros/reset_contract.sql
+          test -f "$FILE"
+          grep -Fq 'health_patient_full_reset' "$FILE"
+          grep -Fq 'esf_execute_dataset_full_reset' "$FILE"
+          grep -Fq '.SILVER_CANONICAL.PATIENT' "$FILE"
+          grep -Fq "'dev': 'DEV_HEALTH'" "$FILE"
+          grep -Fq 'ESF_SCHEMA_PREFIX' "$FILE"
+          grep -Fq "'bronze_preserved', TRUE" "$FILE"
+          if grep -Fq '.BRONZE.' "$FILE"; then exit 1; fi
+          if grep -Eq 'SILVER_STAGING|GOLD_MARTS' "$FILE"; then exit 1; fi
