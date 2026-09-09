@@ -1,10 +1,27 @@
-# Current Context
+# Current Context — Health v2
 
-Concise handoff for a new conversation.
+Updated: 2026-09-09
+
+## Canonical state
+
+Health Hybrid Framework v2 is merged to `main`. The v2 baseline merge is:
+
+```text
+22727ed713c55963824892c61f4f6f5c7141a995
+```
+
+The enterprise adapter pins the merged Framework v2 baseline:
+
+```text
+7d3498f8b5ef48d868ea44aade62cf13e50e58f6
+Framework v2 CI #193: SUCCESS
+```
+
+Health PR #5 is the canonical v2 migration. Earlier stacked PRs #2–#4 are closed as superseded; their old framework pins and combined strategy vocabulary are historical only.
 
 ## Architectural rule
 
-Health has a **framework-independent portable core**. Source contracts and synthetic data generation must work on any Snowflake platform without the enterprise framework, `PLATFORM_CONTROL`, Terraform, WIF, enterprise RBAC, or enterprise database/warehouse naming.
+Health keeps a **framework-independent portable core**:
 
 ```text
 portable Health core
@@ -20,20 +37,21 @@ optional enterprise adapter
 enterprise framework/platform
 ```
 
-See `docs/PORTABILITY.md` and `standalone/README.md`.
+Source contracts and synthetic data generation must work without Framework, `PLATFORM_CONTROL`, Terraform, enterprise WIF/RBAC or enterprise database/warehouse naming.
 
-## Active stack
+## Current reference dataset
+
+`patient` remains a full-change CDC source reference and intentionally uses:
 
 ```text
-PR #1 domain operational proof
-PR #2 Medallion/config/one-click enterprise deploy
-PR #3 generation-aware full reset
-PR #4 framework-free portable synthetic data + stateful source simulator
+load.strategy: scd1
 ```
 
-PR #4 is stacked on PR #3 while the lower stack remains open.
+The domain SQL owns deterministic latest-row/window logic. Framework SCD1 owns bounded keyed current-state upsert and tombstone delete mechanics. Health is not artificially converted to SCD2 merely for symmetry with Transport.
 
-## Portable demo — PR #4
+## Portable synthetic source
+
+The framework-free path remains under `standalone/`.
 
 Bulk deterministic source data:
 
@@ -42,16 +60,6 @@ standalone/sql/00_setup.sql
 standalone/sql/10_generate_patient.sql
 standalone/sql/90_validate.sql
 ```
-
-Bulk objects:
-
-```text
-DEMO_HEALTH.PATIENT_CDC
-DEMO_HEALTH.PATIENT_DEMO_PROFILE
-DEMO_HEALTH.PATIENT_CURRENT
-```
-
-`PATIENT_CDC` matches the formal RAW contract. `PATIENT_DEMO_PROFILE` is explicitly synthetic-only demo data and does not silently expand the production contract. No row represents a real person.
 
 Stateful incremental source simulator:
 
@@ -65,89 +73,57 @@ DEMO_HEALTH.RESET_PATIENT_SIMULATOR()
 DEMO_HEALTH.ADVANCE_PATIENT_SIMULATOR()
 ```
 
-The simulator uses native Snowflake Scripting (`LANGUAGE SQL`), not Python. `RESET` returns `current_batch` to `-1`. The first `ADVANCE` emits deterministic insert records for 1000 synthetic patient IDs. Later calls emit deterministic changes for 100 patients per batch. Starting at batch 5, 10 of those changes are deterministic delete tombstones and the remaining 90 are updates. Event timestamps and source sequences are deterministic so reset-and-replay is reproducible.
-
-The simulator models **source CDC only**. Target history behavior remains the responsibility of the consuming pipeline. The current enterprise adapter still intentionally uses `scd1_merge` for `patient`; another platform can consume the same simulator with SCD2 or another strategy if its domain model requires it.
-
-The standalone SQL creates no database/warehouse/role and contains no enterprise framework or control-plane dependency. Bulk and incremental simulator objects are separate and can coexist.
-
-Verified simulator source/static head:
-
-```text
-d650e7ae092286245d104ea4a4cf4854ba48827d
-Standalone SQL CI #10: SUCCESS
-PR Workspace #27: FAILURE at Load approved Snowflake environment configuration
-```
-
-This `CURRENT_CONTEXT.md` update is documentation-only after that verified source head. The PR Workspace failure belongs to the optional enterprise adapter and occurs before checkout/Snowflake execution.
-
-## Optional enterprise adapter
-
-Current reset-aware framework pin used only by the enterprise dbt/workflow path:
-
-```text
-8afe208bd911a59b9334add78a53878ffea93087
-Framework CI #181: SUCCESS
-```
-
-Enterprise stable databases use `<ENV>_HEALTH` plus Medallion schemas. Those names are not portable-core requirements.
-
-## Reference dataset
-
-`patient` remains a full-change CDC reference dataset and intentionally uses `scd1_merge` in the enterprise adapter because the formal RAW contract currently lacks real business attributes suitable for SCD2 tracking.
-
-The portable bulk generator and stateful simulator provide CDC evidence plus a separately labeled synthetic profile for dashboard experiments without claiming a live EHR source.
+`PATIENT_CDC` follows the formal raw/source contract. `PATIENT_DEMO_PROFILE` is explicitly synthetic-only demo data and does not expand the production contract. The simulator models source CDC only; target state/history behavior belongs to the consuming pipeline.
 
 ## Full reset enterprise adapter
 
+Generation-aware reset remains available through the domain recovery boundary:
+
 ```text
-role: AR_HEALTH_RECOVERY
-operation: health_patient_full_reset
+AR_HEALTH_RECOVERY
 ACTIVE generation N
  -> RESETTING
- -> explicit Bronze/Silver/Gold cleanup
+ -> explicit reconstructable Bronze/Silver/Gold cleanup
  -> generation N+1 / READY_FOR_INITIAL_LOAD
- -> normal pipeline success
+ -> normal pipeline reload
  -> ACTIVE
 ```
 
-Same reset ID retries only while `RESETTING`; ready/completed IDs fail before cleanup. See `docs/RESET_RUNBOOK.md`.
+Repair/replay remains separate from reset. See `docs/RESET_RUNBOOK.md`.
 
-Verified lower stack:
+## Verified static state
+
+The v2 migration was verified before merge with:
 
 ```text
-Framework reset
-8afe208bd911a59b9334add78a53878ffea93087
-Framework CI #181: SUCCESS
-
-Platform reset
-c20c09c0c5f51dff17ebc5fb3eec75c89c5ce5a2
-Terraform CI #167: SUCCESS
-Platform Control SQL CI #37: SUCCESS
-
-Health reset
-d33f92a928e3c9ca553a843c2c52c4952d86a13b
-dbt Static CI #34: SUCCESS
+Metadata v2 CI #24: SUCCESS
+Health dbt v2 CI #40: SUCCESS
+Standalone SQL CI #15: SUCCESS
 ```
 
-## Live boundaries
+The PR Workspace job failed closed before Snowflake connection because the required GitHub Environment Snowflake configuration was absent. OIDC token request, Snowflake connection and workspace SQL were not executed.
+
+## Remaining acceptance gates
 
 Portable live acceptance:
 
 ```text
 plain Snowflake database
-no framework package
-no PLATFORM_CONTROL
-no enterprise roles/naming
- -> execute standalone setup + simulator SQL
- -> RESET simulator
- -> ADVANCE initial batch
- -> inspect CDC/current state
- -> ADVANCE multiple change batches
- -> verify deterministic I/U/D evolution
- -> optionally run any consuming pipeline between ADVANCE calls
+no Framework / PLATFORM_CONTROL
+-> execute standalone setup + simulator SQL
+-> RESET + ADVANCE batches
+-> verify deterministic I/U/D source evolution
 ```
 
-Current Snowflake Scripting variable-binding and `SQLROWCOUNT` placement have been checked against Snowflake documentation, but static CI is not a live Snowflake compiler/runtime proof.
+Enterprise live acceptance:
 
-Enterprise live acceptance separately requires real DEV Snowflake/WIF for grants, control plane, reset generation rollover and pipelines.
+```text
+configure DEV Snowflake + GitHub Environment WIF
+-> prove PR workspace lifecycle
+-> deploy platform/control-plane prerequisites
+-> run live patient SCD1 update/tombstone/replay cases
+-> prove reset/generation rollover and recovery-role isolation
+-> run stable deployment
+```
+
+A complete same-SHA DEV -> UAT -> PROD promotion orchestrator is intentionally deferred until the live DEV deployment path is proven. Static CI must not be described as live Snowflake proof.
